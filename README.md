@@ -11,9 +11,9 @@
 
 ## What This Does
 
-<!-- The path a submission takes, from arriving to the label a reader sees.
-     Six or seven steps — this is the trace you wrote in Milestone 1. -->
+Provenance Guard is a small backend service a writing site plugs into. Text comes in, and what comes back is a guess (AI or human), a confidence score, and one of three plain-English labels a reader can actually understand: high-confidence AI, high-confidence human, or unsure. Two independent signals feed the guess: a local language model reading for predictability, and a stylometry check reading the text's shape (sentence length, vocabulary, punctuation) with no understanding of meaning at all. A writer who disagrees with the label can appeal, which flags the item for review rather than silently standing in judgment.
 
+The full trace path a submission takes, step by step, is in [notes/trace.md](notes/trace.md).
 
 ## Signals and Scoring
 
