@@ -30,6 +30,7 @@ from flask import Flask, jsonify, request
 
 import audit
 import config
+import detector
 
 app = Flask(__name__)
 
@@ -48,6 +49,7 @@ app = Flask(__name__)
 # The storage backend is preconfigured, which stops Flask-Limiter printing a
 # warning on every start. In-memory is right for one laptop and wrong for
 # anything real — a restart forgets every count.
+
 
 class _LimiterOff:
     """
@@ -108,14 +110,17 @@ if config.RATE_LIMITING_ENABLED:
             reason="rate_limited",
             limit=str(exc.description),
         )
-        return jsonify({
-            "error": "rate_limited",
-            "message": "Too many submissions. Try again shortly.",
-            "limit": str(exc.description),
-        }), 429
+        return jsonify(
+            {
+                "error": "rate_limited",
+                "message": "Too many submissions. Try again shortly.",
+                "limit": str(exc.description),
+            }
+        ), 429
 
 
 # ── The worked example. Already works. Don't edit. ────────────────────────────
+
 
 @app.post("/ping")
 def ping():
@@ -126,11 +131,13 @@ def ping():
     the framework turns it into a response. That's the whole idea.
     """
     payload = request.get_json(silent=True) or {}
-    return jsonify({
-        "ok": True,
-        "you_sent": payload.get("message"),
-        "service": "provenance-guard",
-    })
+    return jsonify(
+        {
+            "ok": True,
+            "you_sent": payload.get("message"),
+            "service": "provenance-guard",
+        }
+    )
 
 
 @app.get("/health")
@@ -139,16 +146,19 @@ def health():
     import detector
 
     loaded = detector._model is not None
-    return jsonify({
-        "ok": True,
-        "detector_model": config.DETECTOR_MODEL,
-        "detector_loaded": loaded,
-        "rate_limiting": config.RATE_LIMITING_ENABLED,
-        "log_entries": len(audit.read_entries()),
-    })
+    return jsonify(
+        {
+            "ok": True,
+            "detector_model": config.DETECTOR_MODEL,
+            "detector_loaded": loaded,
+            "rate_limiting": config.RATE_LIMITING_ENABLED,
+            "log_entries": len(audit.read_entries()),
+        }
+    )
 
 
 # ── YOU BUILD THIS ────────────────────────────────────────────────────────────
+
 
 @app.post("/submit")
 # @limiter.limit(f"{config.RATE_LIMIT_PER_MINUTE}/minute;{config.RATE_LIMIT_PER_DAY}/day")
@@ -200,16 +210,34 @@ def submit():
     a malformed input is one of the most common real failures there is.
     """
     payload = request.get_json(silent=True) or {}
+    text = payload.get("text", "")
+    creator_id = payload.get("creator_id")
 
-    # TODO: delete this and build the route.
-    return jsonify({
-        "error": "not_implemented",
-        "message": "POST /submit isn't built yet — see the TODO in app.py.",
-        "you_sent": {
-            "text_length": len(payload.get("text", "")),
-            "creator_id": payload.get("creator_id"),
-        },
-    }), 501
+    content_id = str(uuid.uuid4())
+    model_score = detector.model_signal(text)
+
+    guess = None
+    confidence = None
+    label = None
+
+    audit.log_decision(
+        content_id=content_id,
+        creator_id=creator_id,
+        guess=guess,
+        model_score=model_score,
+        status="decided",
+    )
+
+    return jsonify(
+        {
+            "content_id": content_id,
+            "guess": guess,
+            "confidence": confidence,
+            "label": label,
+            "model_score": model_score,
+            "style_score": None,
+        }
+    )
 
 
 @app.post("/appeal")
@@ -235,14 +263,17 @@ def appeal():
     payload = request.get_json(silent=True) or {}
 
     # TODO: delete this and build the route.
-    return jsonify({
-        "error": "not_implemented",
-        "message": "POST /appeal isn't built yet — see the TODO in app.py.",
-        "you_sent": payload,
-    }), 501
+    return jsonify(
+        {
+            "error": "not_implemented",
+            "message": "POST /appeal isn't built yet — see the TODO in app.py.",
+            "you_sent": payload,
+        }
+    ), 501
 
 
 # ── Already works ─────────────────────────────────────────────────────────────
+
 
 @app.get("/log")
 def get_log():
@@ -266,9 +297,9 @@ def main():
     print(f"  audit log:       {config.AUDIT_LOG}")
     print()
     print("Check it's alive:")
-    print(f'  curl -X POST http://{config.HOST}:{config.PORT}/ping \\')
+    print(f"  curl -X POST http://{config.HOST}:{config.PORT}/ping \\")
     print('    -H "Content-Type: application/json" \\')
-    print("    -d '{\"message\": \"hello\"}'")
+    print('    -d \'{"message": "hello"}\'')
     print()
     # debug=True hands out an interactive debugger, so it's local-only — see config.py
     app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG)

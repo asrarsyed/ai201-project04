@@ -90,12 +90,22 @@ The full trace path a submission takes, step by step, is in [notes/trace.md](not
 ```bash
 $ curl -X POST http://127.0.0.1:5000/submit \
   -H "Content-Type: application/json" \
-  -d '{"text": "...", "creator_id": "..."}'
+  -d '{"text": "The quick brown fox jumps over the lazy dog near the riverbank every single morning without fail.", "creator_id": "asrar"}'
 ```
 
 ```json
-
+{
+  "confidence": null,
+  "content_id": "1d55ceb2-3008-447b-8e94-5b603ceec951",
+  "guess": null,
+  "label": null,
+  "model_score": 0.139,
+  "style_score": null
+}
 ```
+
+<!-- confidence, guess, and label are still placeholders — Milestone 3 only
+     wires in the first signal. Milestones 4 and 5 fill these in. -->
 
 **An appeal**
 
@@ -116,7 +126,22 @@ $ curl "http://127.0.0.1:5000/log?limit=3"
 ```
 
 ```json
-
+{
+  "count": 1,
+  "entries": [
+    {
+      "combined_score": null,
+      "content_id": "1d55ceb2-3008-447b-8e94-5b603ceec951",
+      "creator_id": "asrar",
+      "guess": null,
+      "label": null,
+      "model_score": 0.139,
+      "status": "decided",
+      "style_score": null,
+      "timestamp": "2026-08-30T23:41:31+00:00"
+    }
+  ]
+}
 ```
 
 
