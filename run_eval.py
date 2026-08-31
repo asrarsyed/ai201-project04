@@ -110,6 +110,8 @@ def main():
     for scenario in scenarios.SCENARIOS:
         print(f"\n{scenario['name']}  (criterion {scenario.get('criterion') or '—'})")
 
+        is_appeal = scenario.get("kind") == "appeal"
+
         trials = []
         for trial in range(1, args.trials + 1):
             results = []
@@ -119,7 +121,7 @@ def main():
                     response = requests.post(f"{args.url}/submit", json=body,
                                              timeout=args.timeout)
                     payload = response.json() if response.content else {}
-                    results.append({
+                    result = {
                         "status": response.status_code,
                         "guess": payload.get("guess"),
                         "confidence": payload.get("confidence"),
@@ -127,14 +129,50 @@ def main():
                         "style_score": payload.get("style_score"),
                         "label": payload.get("label"),
                         "sent": preview,
-                    })
+                    }
+
+                    if is_appeal and payload.get("content_id"):
+                        content_id = payload["content_id"]
+                        status_before = payload.get("guess") and "decided"
+                        appeal_response = requests.post(
+                            f"{args.url}/appeal",
+                            json={
+                                "content_id": content_id,
+                                "reasoning": "Evaluation scenario: testing the appeal path.",
+                            },
+                            timeout=args.timeout,
+                        )
+                        appeal_payload = (
+                            appeal_response.json() if appeal_response.content else {}
+                        )
+                        log_response = requests.get(
+                            f"{args.url}/content/{content_id}", timeout=args.timeout
+                        )
+                        log_payload = (
+                            log_response.json() if log_response.content else {}
+                        )
+                        result["appeal_status_code"] = appeal_response.status_code
+                        result["appeal_response_status"] = appeal_payload.get("status")
+                        result["status_before"] = status_before
+                        result["status_after"] = log_payload.get("status")
+                        result["status_changed"] = (
+                            status_before is not None
+                            and log_payload.get("status") is not None
+                            and log_payload.get("status") != status_before
+                        )
+
+                    results.append(result)
                 except Exception as exc:  # noqa: BLE001
                     results.append({"status": None, "error": f"{type(exc).__name__}: {exc}",
                                     "sent": preview})
 
             trials.append(results)
-            guesses = [r.get("guess") or "—" for r in results]
-            print(f"  trial {trial}: {', '.join(guesses)}")
+            if is_appeal:
+                changed = [str(r.get("status_changed")) for r in results]
+                print(f"  trial {trial}: status_changed = {', '.join(changed)}")
+            else:
+                guesses = [r.get("guess") or "—" for r in results]
+                print(f"  trial {trial}: {', '.join(guesses)}")
 
         rows.append({"scenario": scenario, "trials": trials})
 

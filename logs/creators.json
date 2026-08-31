@@ -1,0 +1,322 @@
+{
+  "attacker_EV01": {
+    "ai_count": 0,
+    "human_count": 2,
+    "unsure_count": 0
+  },
+  "attacker_EV02": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 2
+  },
+  "attacker_EV03": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 2
+  },
+  "attacker_EV04": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 2
+  },
+  "attacker_EV05": {
+    "ai_count": 0,
+    "human_count": 2,
+    "unsure_count": 0
+  },
+  "attacker_EV06": {
+    "ai_count": 0,
+    "human_count": 1,
+    "unsure_count": 1
+  },
+  "attacker_EV07": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 2
+  },
+  "attacker_EV08": {
+    "ai_count": 0,
+    "human_count": 2,
+    "unsure_count": 0
+  },
+  "attacker_EV09": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 2
+  },
+  "attacker_EV10": {
+    "ai_count": 2,
+    "human_count": 0,
+    "unsure_count": 0
+  },
+  "attacker_FP01": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 2
+  },
+  "attacker_FP02": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 2
+  },
+  "attacker_FP03": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 2
+  },
+  "attacker_FP04": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 2
+  },
+  "attacker_FP05": {
+    "ai_count": 1,
+    "human_count": 0,
+    "unsure_count": 1
+  },
+  "attacker_FP06": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 2
+  },
+  "attacker_FP07": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 2
+  },
+  "attacker_FP08": {
+    "ai_count": 0,
+    "human_count": 2,
+    "unsure_count": 0
+  },
+  "attacker_MF03": {
+    "ai_count": 0,
+    "human_count": 2,
+    "unsure_count": 0
+  },
+  "attacker_MF04": {
+    "ai_count": 0,
+    "human_count": 1,
+    "unsure_count": 1
+  },
+  "attacker_MF07": {
+    "ai_count": 2,
+    "human_count": 0,
+    "unsure_count": 0
+  },
+  "attacker_MF08": {
+    "ai_count": 2,
+    "human_count": 0,
+    "unsure_count": 0
+  },
+  "attacker_PI01": {
+    "ai_count": 0,
+    "human_count": 2,
+    "unsure_count": 0
+  },
+  "attacker_PI02": {
+    "ai_count": 0,
+    "human_count": 2,
+    "unsure_count": 0
+  },
+  "attacker_PI03": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 2
+  },
+  "attacker_PI04": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 2
+  },
+  "attacker_PI05": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 2
+  },
+  "attacker_PI06": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 2
+  },
+  "attacker_flood": {
+    "ai_count": 0,
+    "human_count": 12,
+    "unsure_count": 0
+  },
+  "eval_appeal path_1": {
+    "ai_count": 0,
+    "human_count": 3,
+    "unsure_count": 3
+  },
+  "eval_appeal path_2": {
+    "ai_count": 0,
+    "human_count": 6,
+    "unsure_count": 0
+  },
+  "eval_appeal path_3": {
+    "ai_count": 0,
+    "human_count": 6,
+    "unsure_count": 0
+  },
+  "eval_appeal path_4": {
+    "ai_count": 0,
+    "human_count": 6,
+    "unsure_count": 0
+  },
+  "eval_appeal path_5": {
+    "ai_count": 0,
+    "human_count": 6,
+    "unsure_count": 0
+  },
+  "eval_bad_huge": {
+    "ai_count": 6,
+    "human_count": 0,
+    "unsure_count": 0
+  },
+  "eval_human vs ai_1": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 6
+  },
+  "eval_human vs ai_10": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 6
+  },
+  "eval_human vs ai_11": {
+    "ai_count": 3,
+    "human_count": 0,
+    "unsure_count": 3
+  },
+  "eval_human vs ai_12": {
+    "ai_count": 3,
+    "human_count": 0,
+    "unsure_count": 3
+  },
+  "eval_human vs ai_13": {
+    "ai_count": 3,
+    "human_count": 0,
+    "unsure_count": 3
+  },
+  "eval_human vs ai_14": {
+    "ai_count": 3,
+    "human_count": 0,
+    "unsure_count": 3
+  },
+  "eval_human vs ai_15": {
+    "ai_count": 3,
+    "human_count": 0,
+    "unsure_count": 3
+  },
+  "eval_human vs ai_2": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 6
+  },
+  "eval_human vs ai_3": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 6
+  },
+  "eval_human vs ai_4": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 6
+  },
+  "eval_human vs ai_5": {
+    "ai_count": 0,
+    "human_count": 6,
+    "unsure_count": 0
+  },
+  "eval_human vs ai_6": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 6
+  },
+  "eval_human vs ai_7": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 6
+  },
+  "eval_human vs ai_8": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 6
+  },
+  "eval_human vs ai_9": {
+    "ai_count": 0,
+    "human_count": 6,
+    "unsure_count": 0
+  },
+  "eval_my own writi_1": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 6
+  },
+  "eval_my own writi_10": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 6
+  },
+  "eval_my own writi_2": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 6
+  },
+  "eval_my own writi_3": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 6
+  },
+  "eval_my own writi_4": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 6
+  },
+  "eval_my own writi_5": {
+    "ai_count": 0,
+    "human_count": 6,
+    "unsure_count": 0
+  },
+  "eval_my own writi_6": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 6
+  },
+  "eval_my own writi_7": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 6
+  },
+  "eval_my own writi_8": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 6
+  },
+  "eval_my own writi_9": {
+    "ai_count": 0,
+    "human_count": 6,
+    "unsure_count": 0
+  },
+  "flood_tester": {
+    "ai_count": 0,
+    "human_count": 57,
+    "unsure_count": 0
+  },
+  "label_check": {
+    "ai_count": 1,
+    "human_count": 0,
+    "unsure_count": 0
+  },
+  "label_check2": {
+    "ai_count": 0,
+    "human_count": 0,
+    "unsure_count": 1
+  },
+  "label_check3": {
+    "ai_count": 0,
+    "human_count": 1,
+    "unsure_count": 0
+  }
+}

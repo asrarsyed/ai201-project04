@@ -79,10 +79,22 @@ def score_to_label(score: float) -> tuple[str, str]:
     milestone.
     """
     if score >= config.AI_THRESHOLD:
-        return "ai", "We think this was probably written by AI."
+        return "ai", (
+            "We think this was probably written by AI. That's a guess from "
+            "automated checks, not a finding — they're wrong sometimes. If "
+            "you wrote this yourself, you can appeal and a person will look at it."
+        )
     if score <= config.HUMAN_THRESHOLD:
-        return "human", "We think this was probably written by a person."
-    return "unsure", "We can't tell whether this was written by a person or by AI. This isn't an accusation — it just means our checks didn't turn up a clear answer either way."
+        return "human", (
+            "We think this was probably written by a person. If you think "
+            "we got this wrong, you can appeal and a person will look at it."
+        )
+    return "unsure", (
+        "We can't tell whether this was written by a person or by AI. This "
+        "isn't an accusation — it just means our checks didn't turn up a "
+        "clear answer either way. Nothing has been decided, and you can "
+        "appeal at any time if you'd like a person to look at it."
+    )
 
 
 def label_ranges() -> list[tuple[str, str]]:

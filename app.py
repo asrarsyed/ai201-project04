@@ -168,7 +168,7 @@ def health():
 
 
 @app.post("/submit")
-# @limiter.limit(f"{config.RATE_LIMIT_PER_MINUTE}/minute;{config.RATE_LIMIT_PER_DAY}/day")
+@limiter.limit(f"{config.RATE_LIMIT_PER_MINUTE}/minute;{config.RATE_LIMIT_PER_DAY}/day")
 def submit():
     """
     Take a piece of text, decide about it, log the decision, answer.
@@ -393,7 +393,9 @@ def get_content(content_id):
     """
     entries = audit.entries_for(content_id)
     if not entries:
-        return jsonify({"error": "not_found", "message": "No submission found with that content_id."}), 404
+        return jsonify(
+            {"error": "not_found", "message": "No submission found with that content_id."}
+        ), 404
 
     latest = dict(entries[-1])
     latest["creator_note"] = creators.verification_note(latest.get("creator_id"))
@@ -414,7 +416,9 @@ def get_creator(creator_id):
     """
     entries = [e for e in audit.read_entries() if e.get("creator_id") == creator_id]
     if not entries:
-        return jsonify({"error": "not_found", "message": "No entries found for that creator_id."}), 404
+        return jsonify(
+            {"error": "not_found", "message": "No entries found for that creator_id."}
+        ), 404
 
     by_content = {}
     for e in entries:
@@ -449,7 +453,9 @@ def get_stats():
     """
     entries = audit.read_entries()
 
-    decisions = [e for e in entries if e.get("status") in ("decided", "under_review") and e.get("guess")]
+    decisions = [
+        e for e in entries if e.get("status") in ("decided", "under_review") and e.get("guess")
+    ]
     appeals = [e for e in entries if e.get("event") == "appeal"]
     rejections = [e for e in entries if e.get("event") == "rejected"]
 
