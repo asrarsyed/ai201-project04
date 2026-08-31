@@ -47,6 +47,7 @@ def words(text: str) -> list[str]:
 
 # ── The three measures — YOU BUILD THESE ─────────────────────────────────────
 
+
 def sentence_length_spread(text: str) -> float:
     """
     How much sentence length varies. ← TODO
@@ -64,8 +65,15 @@ def sentence_length_spread(text: str) -> float:
     `stdev` raises on fewer than two values. Decide what that should return
     before the attack set decides for you.
     """
-    # TODO: replace this
-    return 0.0
+    lengths = [len(words(s)) for s in sentences(text)]
+    if len(lengths) < 2:
+        return 0.0
+
+    mean = statistics.mean(lengths)
+    if mean == 0:
+        return 0.0
+
+    return statistics.stdev(lengths) / mean
 
 
 def type_token_ratio(text: str) -> float:
@@ -80,8 +88,11 @@ def type_token_ratio(text: str) -> float:
     directly comparable on it, and if your test inputs vary a lot in length,
     that alone can look like a signal.
     """
-    # TODO: replace this
-    return 0.0
+    tokens = words(text)
+    if not tokens:
+        return 0.0
+
+    return len(set(tokens)) / len(tokens)
 
 
 def punctuation_density(text: str) -> float:
@@ -94,11 +105,16 @@ def punctuation_density(text: str) -> float:
         more interesting than full stops, because they vary more between
         writers.
     """
-    # TODO: replace this
-    return 0.0
+    tokens = words(text)
+    if not tokens:
+        return 0.0
+
+    marks = re.findall(r"[;:—–]|\.\.\.", text)
+    return len(marks) / len(tokens)
 
 
 # ── Combining them ───────────────────────────────────────────────────────────
+
 
 def style_signal(text: str) -> float:
     """
@@ -122,8 +138,14 @@ def style_signal(text: str) -> float:
     you trust it. Plain and ordinary, not formal: formal prose reads as *human*
     to signal one, and it is plain writing that gets accused.
     """
-    # TODO: replace this
-    return 0.5
+    spread = min(sentence_length_spread(text), 0.8) / 0.8
+    ttr = type_token_ratio(text)
+    punct = min(punctuation_density(text), 0.3) / 0.3
+
+    # All three raw measures run "higher = more human", opposite of
+    # model_signal, so each gets flipped before averaging.
+    ai_ish = ((1.0 - spread) + (1.0 - ttr) + (1.0 - punct)) / 3.0
+    return round(min(max(ai_ish, 0.0), 1.0), 4)
 
 
 if __name__ == "__main__":
