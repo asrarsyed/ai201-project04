@@ -37,7 +37,7 @@ The full trace path a submission takes, step by step, is in [notes/trace.md](not
 
 **Why that might differ between human and AI writing:** Generated prose tends toward even, mid-length sentences and a narrower vocabulary. Human writing is lumpier.
 
-**What it can't see:** It cannot read. It has no idea what the text says, so anything that changes shape without changing substance (typos, breaking up sentences, pasting a quotation) moves the score. It also has the same blind spot as signal one in reverse: testing it on my own calibration text, plain AI writing scored *more* AI-ish than ornate AI writing with rare words and an em dash — rare/varied words read as more human to this signal, same trap signal one falls into.
+**What it can't see:** It cannot read. It has no idea what the text says, so anything that changes shape without changing substance (typos, breaking up sentences, pasting a quotation) moves the score. Its vocabulary measure has the same trap signal one falls into: rare, varied words (`type_token_ratio` near 1.0) score as more human even when AI wrote them, and repetitive, ordinary vocabulary scores as more AI-ish even from a real person.
 
 ### The combining rule
 
@@ -180,15 +180,15 @@ $ curl "http://127.0.0.1:5000/log?limit=3"
 
 **Moment 1**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* I asked for `style_signal`'s combining rule (Milestone 4) — how to flip direction and scale `sentence_length_spread` and `punctuation_density` onto 0–1 before averaging them with `type_token_ratio`.
+- *What came back:* A hard-clip-and-divide approach (`min(value, cap) / cap`) with specific caps, plus flipping all three toward "higher = AI" to match `model_signal`'s direction.
+- *What I changed:* I didn't take the caps on faith — I ran the three-measure signal against real calibration text I supplied (a founder's informal blog post vs. two AI-generated paragraphs) and found the human text barely separated from the AI text. I pushed back and asked to retune the `sentence_length_spread` cap specifically, which the model had set too loose (1.5) to let that measure swing hard enough on real human writing. Lowering it to 0.8 fixed the separation — a change driven by my own test data, not something I accepted as given.
 
 **Moment 2**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* Before writing `scoring.py::combine_signals`'s weights, I asked it to run both signals over several calibration texts (mine plus ones I found) and report where they agreed and disagreed, per Milestone 4's instructions.
+- *What came back:* A weighting recommendation (0.35 model / 0.65 style) based on the finding that the two signals never disagreed in direction, but the model signal swung harder and was the main driver of false positives on formal human writing.
+- *What I changed:* Later, while testing label reachability for Milestone 5, I had it re-verify the "high-confidence human" label was actually reachable with real text rather than assuming the earlier weighting was sufficient. That test surfaced a real bug it had introduced back in Moment 1 — `punctuation_density` returning 0 was scoring as maximally AI-ish, which silently blocked the human label from ever being reached. I had it fix the direction (0 density now scores neutral, not AI-ish) and then re-derive `AI_THRESHOLD` from fresh test data instead of guessing a new number, which is what actually made all three labels reachable.
 
 <!-- ═══════════════════════ UNIT 8 — THE TEST ═══════════════════════ -->
 
