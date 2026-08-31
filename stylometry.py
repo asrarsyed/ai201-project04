@@ -140,11 +140,17 @@ def style_signal(text: str) -> float:
     """
     spread = min(sentence_length_spread(text), 0.8) / 0.8
     ttr = type_token_ratio(text)
-    punct = min(punctuation_density(text), 0.3) / 0.3
+
+    # No semicolons/dashes/ellipses is the common case for plain writing,
+    # human or AI — it isn't evidence of anything, so it scores neutral
+    # (0.5) rather than flipping to "maximally AI-ish". Only actual use of
+    # that punctuation moves this measure, toward "more human".
+    punct_raw = punctuation_density(text)
+    punct = 0.5 if punct_raw == 0 else 1.0 - min(punct_raw, 0.3) / 0.3
 
     # All three raw measures run "higher = more human", opposite of
     # model_signal, so each gets flipped before averaging.
-    ai_ish = ((1.0 - spread) + (1.0 - ttr) + (1.0 - punct)) / 3.0
+    ai_ish = ((1.0 - spread) + (1.0 - ttr) + punct) / 3.0
     return round(min(max(ai_ish, 0.0), 1.0), 4)
 
 

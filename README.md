@@ -53,7 +53,9 @@ The full trace path a submission takes, step by step, is in [notes/trace.md](not
 <!-- ⚠️ The grader checks your code against that line. If your rule lives
      somewhere else, say where. -->
 
-**A case where my two signals split, and what my rule does with it:** They didn't split in direction, but they split in *magnitude* on two texts with almost identical texture. "Informal real human" writing (a founder's blog post) scored model=0.467, style=0.463 — both correctly near the human end. "Clearly human (blog)" — another real, informal, first-person post, just as casual, with a typo left in — scored model=0.624, style=0.578: both signals leaning AI, and the model signal driving most of that lean. Combined, that second text lands at 0.594, in the "unsure" band rather than "human" under my current thresholds. That's the case the combining rule has to live with: reweighting toward style softened it (0.594 vs. an unweighted average of 0.601) but didn't fix it. A real, ordinary person writing casually about their own life can still land in "unsure," not "human" — the reweight reduces how often that happens, it doesn't eliminate it. Threshold tuning in Milestone 5 is the next lever, not the combining rule alone.
+**A case where my two signals split, and what my rule does with it:** They didn't split in direction, but they split in *magnitude* on two texts with almost identical texture. "Informal real human" writing (a founder's blog post) scored model=0.467, style=0.463 — both correctly near the human end. "Clearly human (blog)" — another real, informal, first-person post, just as casual, with a typo left in — scored model=0.624, style=0.578: both signals leaning AI, and the model signal driving most of that lean. Combined, that second text lands at 0.594, in the "unsure" band rather than "human" under my current thresholds. That's the case the combining rule has to live with: reweighting toward style softened it (0.594 vs. an unweighted average of 0.601) but didn't fix it. A real, ordinary person writing casually about their own life can still land in "unsure," not "human" — the reweight reduces how often that happens, it doesn't eliminate it.
+
+**A bug the label-reachability test in Milestone 5 uncovered:** `punctuation_density` returning 0 (no semicolons/dashes/ellipses — the common case for ordinary writing, human or AI) was flipping to a *maximally AI-ish* contribution inside `style_signal`. That's backwards: absence of that punctuation isn't evidence of anything, it's just how most people write most of the time. It was actively dragging plain human calibration text upward and making "high-confidence human" unreachable with real text. Fixed it to score a neutral 0.5 when density is 0, so the measure only moves the score when a writer actually uses that punctuation — which is where it has real signal. I chose this over dropping punctuation from `style_signal` entirely because I wanted to keep its contribution for writers who *do* use semicolons and dashes distinctively, not just discard the measure. This did cost some AI-detection sharpness — clearly-AI text also commonly has zero fancy punctuation, so the fix pulled AI-text scores down too, and I had to lower `AI_THRESHOLD` from 0.65 to 0.55 to compensate (see Label Variants). That's the deliberate trade from Criterion 1: I'd rather blunt AI detection than keep punishing real writers for writing plainly.
 
 
 ## Label Variants
@@ -65,14 +67,15 @@ The full trace path a submission takes, step by step, is in [notes/trace.md](not
 
 | Label | Score range | The exact text a reader sees |
 |---|---|---|
-| high-confidence human |  |  |
-| unsure |  |  |
-| high-confidence AI |  |  |
+| high-confidence human | 0.00 – 0.35 | "We think this was probably written by a person." |
+| unsure | 0.35 – 0.55 | "We can't tell whether this was written by a person or by AI. This isn't an accusation — it just means our checks didn't turn up a clear answer either way." |
+| high-confidence AI | 0.55 – 1.00 | "We think this was probably written by AI." |
 
 **Why I worded the "unsure" one this way:**
 <!-- It's the hardest of the three. It has to admit uncertainty without
      sounding like an accusation, because the person reading it may well have
      written every word themselves. -->
+I wrote the first sentence as plainly as the other two ("we can't tell"), then added a second sentence specifically to head off the reading a real writer would otherwise land on: that "unsure" is a soft accusation, or "we're not sure, but we suspect you." Saying outright that it isn't an accusation, and that it just means the checks didn't produce a clear answer, keeps the tone the same whether the writer is completely innocent or actually used AI — it doesn't lean either way, which is the whole point of the band.
 
 
 ## Sample Run
@@ -90,33 +93,37 @@ The full trace path a submission takes, step by step, is in [notes/trace.md](not
 ```bash
 $ curl -X POST http://127.0.0.1:5000/submit \
   -H "Content-Type: application/json" \
-  -d '{"text": "The quick brown fox jumps over the lazy dog near the riverbank every single morning without fail.", "creator_id": "asrar"}'
+  -d '{"text": "MerchantE is a financial technology company that provides payment-processing and payment-infrastructure services to businesses. Founded in 1999, it began as an e-commerce payment provider and has grown into a full-service payments platform.", "creator_id": "asrar"}'
 ```
 
 ```json
 {
-  "confidence": null,
-  "content_id": "1d55ceb2-3008-447b-8e94-5b603ceec951",
-  "guess": null,
-  "label": null,
-  "model_score": 0.139,
-  "style_score": null
+  "confidence": 0.1875,
+  "content_id": "a9b43bd3-c035-411d-ae96-997cb2567301",
+  "guess": "ai",
+  "label": "We think this was probably written by AI.",
+  "model_score": 0.8206,
+  "style_score": 0.4716
 }
 ```
 
-<!-- confidence, guess, and label are still placeholders — Milestone 3 only
-     wires in the first signal. Milestones 4 and 5 fill these in. -->
-
 **An appeal**
+
+<!-- The writer disagrees with the "ai" label above and appeals, using the
+     content_id from the submission response. -->
 
 ```bash
 $ curl -X POST http://127.0.0.1:5000/appeal \
   -H "Content-Type: application/json" \
-  -d '{"content_id": "...", "reasoning": "..."}'
+  -d '{"content_id": "a9b43bd3-c035-411d-ae96-997cb2567301", "reasoning": "I wrote this myself, it'\''s a factual company description I researched and wrote by hand."}'
 ```
 
 ```json
-
+{
+  "content_id": "a9b43bd3-c035-411d-ae96-997cb2567301",
+  "message": "Your appeal has been recorded and the decision is under review.",
+  "status": "under_review"
+}
 ```
 
 **What the log shows afterwards**
@@ -127,22 +134,46 @@ $ curl "http://127.0.0.1:5000/log?limit=3"
 
 ```json
 {
-  "count": 1,
+  "count": 3,
   "entries": [
     {
-      "combined_score": null,
-      "content_id": "1d55ceb2-3008-447b-8e94-5b603ceec951",
+      "combined_score": 0.44199999999999995,
+      "content_id": "c809438f-962e-4585-bfca-c170f12b2cd0",
       "creator_id": "asrar",
-      "guess": null,
-      "label": null,
-      "model_score": 0.139,
+      "guess": "unsure",
+      "label": "We can't tell whether this was written by a person or by AI. This isn't an accusation — it just means our checks didn't turn up a clear answer either way.",
+      "model_score": 0.6474,
       "status": "decided",
-      "style_score": null,
-      "timestamp": "2026-08-30T23:41:31+00:00"
+      "style_score": 0.3314,
+      "timestamp": "2026-08-31T01:48:01+00:00"
+    },
+    {
+      "combined_score": 0.59375,
+      "content_id": "a9b43bd3-c035-411d-ae96-997cb2567301",
+      "creator_id": "asrar",
+      "guess": "ai",
+      "label": "We think this was probably written by AI.",
+      "model_score": 0.8206,
+      "status": "decided",
+      "style_score": 0.4716,
+      "timestamp": "2026-08-31T01:48:01+00:00"
+    },
+    {
+      "content_id": "a9b43bd3-c035-411d-ae96-997cb2567301",
+      "creator_id": "asrar",
+      "event": "appeal",
+      "reasoning": "I wrote this myself, it's a factual company description I researched and wrote by hand.",
+      "status": "under_review",
+      "timestamp": "2026-08-31T01:48:08+00:00"
     }
   ]
 }
 ```
+
+<!-- Note the original "decided" entry for a9b43bd3... is untouched — the
+     appeal is a new, separate entry with status "under_review", not an edit.
+     That's the audit log's append-only design: the record of what was first
+     decided survives the challenge. -->
 
 
 ## How I Used AI
