@@ -30,7 +30,9 @@ from flask import Flask, jsonify, request
 
 import audit
 import config
+import creators
 import detector
+import phrasing
 import scoring
 import stylometry
 
@@ -42,7 +44,10 @@ app = Flask(__name__)
 #
 #   1. Set RATE_LIMITING_ENABLED = True in config.py (or AI201_RATE_LIMITS=1)
 #   2. Choose your numbers there
-#   3. Uncomment the @limiter.limit(...) line on /submit below
+#   3. Uncomment the @limiter.limit(...) line on /submit below, AND the
+#      matching line on /submit/batch (Stretch feature) — batch does up to
+#      BATCH_MAX_ITEMS scoring passes per request, so leaving its limiter
+#      commented out while /submit's is on defeats the limit entirely.
 #
 # The order doesn't matter. While limiting is off, that decorator is a no-op
 # that quietly does nothing, so uncommenting it early costs you nothing — but
@@ -215,22 +220,32 @@ def submit():
     text = payload.get("text", "")
     creator_id = payload.get("creator_id")
 
-    if not isinstance(text, str) or len(text.split()) < 3:
-        audit.log_rejection(
-            creator_id=creator_id or "unknown",
-            reason="invalid_text",
-        )
-        return jsonify(
-            {
-                "error": "invalid_input",
-                "message": "text is required and must be at least a few words long.",
-            }
-        ), 400
+    error = _validate_text(text)
+    if error:
+        audit.log_rejection(creator_id=creator_id or "unknown", reason="invalid_text")
+        return jsonify({"error": "invalid_input", "message": error}), 400
 
+    return jsonify(_score_and_log(text, creator_id))
+
+
+def _validate_text(text) -> str | None:
+    """Returns an error message if `text` is unusable, else None."""
+    if not isinstance(text, str) or len(text.split()) < 3:
+        return "text is required and must be at least a few words long."
+    return None
+
+
+def _score_and_log(text: str, creator_id: str) -> dict:
+    """
+    The scoring core of /submit: run all signals, combine, label, log, and
+    build the response body. Shared with /submit/batch so both routes decide
+    the same way.
+    """
     content_id = str(uuid.uuid4())
     model_score = detector.model_signal(text)
     style_score = stylometry.style_signal(text)
-    combined_score = scoring.combine_signals(model_score, style_score)
+    pattern_score = phrasing.pattern_signal(text)
+    combined_score = scoring.combine_signals(model_score, style_score, pattern_score)
     guess, label = scoring.score_to_label(combined_score)
     confidence = round(abs(combined_score - 0.5) * 2, 4)
 
@@ -243,18 +258,77 @@ def submit():
         combined_score=combined_score,
         label=label,
         status="decided",
+        pattern_score=pattern_score,
     )
+    creators.record_guess(creator_id, guess)
 
-    return jsonify(
-        {
-            "content_id": content_id,
-            "guess": guess,
-            "confidence": confidence,
-            "label": label,
-            "model_score": model_score,
-            "style_score": style_score,
-        }
-    )
+    return {
+        "content_id": content_id,
+        "guess": guess,
+        "confidence": confidence,
+        "label": label,
+        "model_score": model_score,
+        "style_score": style_score,
+        "pattern_score": pattern_score,
+        "creator_note": creators.verification_note(creator_id),
+    }
+
+
+@app.post("/submit/batch")
+# Same limiter as /submit, and deliberately so: batch does up to
+# BATCH_MAX_ITEMS scoring passes per request, so without its own limit line
+# it would be a free way around the per-minute cap on /submit — one request,
+# unlimited scoring work inside it. Uncomment together with /submit's line.
+# @limiter.limit(f"{config.RATE_LIMIT_PER_MINUTE}/minute;{config.RATE_LIMIT_PER_DAY}/day")
+def submit_batch():
+    """
+    Score multiple texts in one call. ← Stretch feature
+
+    Expects JSON:
+        {"items": [{"text": "...", "creator_id": "..."}, ...]}
+
+    Each item is validated and scored exactly like /submit, independently —
+    one bad item in the batch gets its own rejection entry and doesn't stop
+    the rest. Capped at BATCH_MAX_ITEMS so a single request can't be used to
+    dodge per-request rate limiting by smuggling in an unbounded amount of
+    work.
+    """
+    payload = request.get_json(silent=True) or {}
+    items = payload.get("items")
+
+    if not isinstance(items, list) or not items:
+        return jsonify(
+            {
+                "error": "invalid_input",
+                "message": "items must be a non-empty list of {text, creator_id}.",
+            }
+        ), 400
+
+    if len(items) > config.BATCH_MAX_ITEMS:
+        return jsonify(
+            {
+                "error": "invalid_input",
+                "message": f"items may not exceed {config.BATCH_MAX_ITEMS} per batch.",
+            }
+        ), 400
+
+    results = []
+    for item in items:
+        if not isinstance(item, dict):
+            results.append({"error": "invalid_input", "message": "each item must be an object."})
+            continue
+
+        text = item.get("text", "")
+        creator_id = item.get("creator_id")
+        error = _validate_text(text)
+        if error:
+            audit.log_rejection(creator_id=creator_id or "unknown", reason="invalid_text")
+            results.append({"error": "invalid_input", "message": error})
+            continue
+
+        results.append(_score_and_log(text, creator_id))
+
+    return jsonify({"count": len(results), "results": results})
 
 
 @app.post("/appeal")
@@ -298,6 +372,109 @@ def appeal():
             "content_id": content_id,
             "status": "under_review",
             "message": "Your appeal has been recorded and the decision is under review.",
+        }
+    )
+
+
+# ── Stretch features ──────────────────────────────────────────────────────────
+
+
+@app.get("/content/<content_id>")
+def get_content(content_id):
+    """
+    One item's current status. ← Stretch feature
+
+        curl http://127.0.0.1:5000/content/<content_id>
+
+    "Current" means the most recent entry for this id, not the first — a
+    submission that was later appealed shows status "under_review", not the
+    original "decided". The original decision is still in /log; this just
+    answers "where does this stand right now."
+    """
+    entries = audit.entries_for(content_id)
+    if not entries:
+        return jsonify({"error": "not_found", "message": "No submission found with that content_id."}), 404
+
+    latest = dict(entries[-1])
+    latest["creator_note"] = creators.verification_note(latest.get("creator_id"))
+    return jsonify(latest)
+
+
+@app.get("/creator/<creator_id>")
+def get_creator(creator_id):
+    """
+    One writer's history and current standing. ← Stretch feature
+
+        curl http://127.0.0.1:5000/creator/<creator_id>
+
+    Groups every log entry touching this creator_id by content_id, so a
+    submission and any appeal against it are reported together with the
+    item's current status, rather than as one flat list a caller has to
+    reassemble by hand.
+    """
+    entries = [e for e in audit.read_entries() if e.get("creator_id") == creator_id]
+    if not entries:
+        return jsonify({"error": "not_found", "message": "No entries found for that creator_id."}), 404
+
+    by_content = {}
+    for e in entries:
+        cid = e.get("content_id")
+        by_content.setdefault(cid, []).append(e)
+
+    items = [
+        {"content_id": cid, "current_status": history[-1].get("status"), "history": history}
+        for cid, history in by_content.items()
+    ]
+
+    return jsonify(
+        {
+            "creator_id": creator_id,
+            "submission_count": len(items),
+            "creator_note": creators.verification_note(creator_id),
+            "items": items,
+        }
+    )
+
+
+@app.get("/stats")
+def get_stats():
+    """
+    Aggregate numbers across the whole audit log. ← Stretch feature
+
+        curl http://127.0.0.1:5000/stats
+
+    Everything here is derived from /log, not a separate store — this is a
+    read of what's already recorded, not a new source of truth. Rejections
+    are counted separately from decisions since they never got a score.
+    """
+    entries = audit.read_entries()
+
+    decisions = [e for e in entries if e.get("status") in ("decided", "under_review") and e.get("guess")]
+    appeals = [e for e in entries if e.get("event") == "appeal"]
+    rejections = [e for e in entries if e.get("event") == "rejected"]
+
+    guess_counts = {}
+    for e in decisions:
+        guess_counts[e["guess"]] = guess_counts.get(e["guess"], 0) + 1
+
+    def _avg(key):
+        values = [e[key] for e in decisions if isinstance(e.get(key), (int, float))]
+        return round(sum(values) / len(values), 4) if values else None
+
+    return jsonify(
+        {
+            "total_entries": len(entries),
+            "decisions": len(decisions),
+            "appeals": len(appeals),
+            "rejections": len(rejections),
+            "appeal_rate": round(len(appeals) / len(decisions), 4) if decisions else None,
+            "guess_distribution": guess_counts,
+            "average_scores": {
+                "model_score": _avg("model_score"),
+                "style_score": _avg("style_score"),
+                "pattern_score": _avg("pattern_score"),
+                "combined_score": _avg("combined_score"),
+            },
         }
     )
 

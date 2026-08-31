@@ -19,42 +19,36 @@ you claim, so that line should read `scoring.py::combine_signals`.
 import config
 
 
-def combine_signals(model_score: float, style_score: float) -> float:
+def combine_signals(model_score: float, style_score: float, pattern_score: float = 0.0) -> float:
     """
-    Combine two 0–1 signals into one 0–1 score. ← TODO (Milestone 4)
+    Combine three 0-1 signals into one 0-1 score.
 
-    Both inputs point the same way: higher means more likely AI. Your output
-    should too.
+    All three inputs point the same way: higher means more likely AI. The
+    output does too. `pattern_score` (from `phrasing.pattern_signal`,
+    Stretch Features) defaults to 0.0 so existing two-signal callers still
+    work.
 
     Args:
         model_score: from `detector.model_signal` — how predictable the text is.
         style_score: from `stylometry.style_signal` — the shape of the text.
+        pattern_score: from `phrasing.pattern_signal` — AI rhetorical-pattern density.
 
     Returns:
         A float from 0.0 (confidently human) to 1.0 (confidently AI).
 
-    ⚠️ **Write the rule down before you code it, and put the numbers in your
-    README.** A weighted average is the obvious choice and it is not the only
-    one. Things worth thinking about:
+    **The rule:** a weighted average, same shape as the original two-signal
+    rule — see README's Signals and Scoring for the calibration behind the
+    numbers. `pattern_score` was added last and given the smallest weight
+    deliberately: it's the sharpest and most register-specific of the three
+    (only fires on a particular rhetorical style — see phrasing.py), so it
+    nudges the score rather than driving it.
 
-      - **What happens when they disagree?** One signal at 0.9 and the other at
-        0.1 averages to 0.5 — "unsure". Is that what you want? It might be
-        exactly right: two methods disagreeing IS uncertainty. Or you might
-        decide one signal is more trustworthy when they split.
-
-      - **Which way do you want to be wrong?** Weighting toward the signal that
-        reads more human means fewer false accusations and more AI text
-        getting through. There's no weighting that avoids the trade.
-
-      - Milestone 4 asks you to find a case where your two signals split and
-        write it down. That case is what this rule exists to handle.
-
-    The weights in config.py are placeholders. Change them, or ignore them and
-    write a different rule.
+    The weights live in config.py.
     """
     return (
         config.WEIGHT_MODEL_SIGNAL * model_score
         + config.WEIGHT_STYLE_SIGNAL * style_score
+        + config.WEIGHT_PATTERN_SIGNAL * pattern_score
     )
 
 

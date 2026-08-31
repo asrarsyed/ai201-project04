@@ -64,8 +64,7 @@ def _load():
         from transformers import AutoModelForCausalLM, AutoTokenizer
     except ImportError as exc:
         raise DetectorUnavailable(
-            f"transformers or torch isn't installed ({exc}).\n"
-            f"Run: pip install -r requirements.txt"
+            f"transformers or torch isn't installed ({exc}).\nRun: pip install -r requirements.txt"
         ) from exc
 
     try:
@@ -127,11 +126,83 @@ def model_signal(text: str) -> float:
     """
     ppl = perplexity(text)
 
-    midpoint = 45.0    # perplexity that scores 0.5
-    steepness = 1.6    # how sharply the score moves either side of it
+    midpoint = 45.0  # perplexity that scores 0.5
+    steepness = 1.6  # how sharply the score moves either side of it
 
     # Logistic on log-perplexity. Low perplexity -> high AI score.
     score = 1.0 / (1.0 + (ppl / midpoint) ** steepness)
+    return round(min(max(score, 0.0), 1.0), 4)
+
+
+def burstiness_signal(text: str) -> float:
+    """
+    ⚠️ NOT WIRED INTO SCORING. Kept as a documented, tested, and rejected
+    third-signal candidate — see README's Stretch Features. `combine_signals`
+    and `/submit` use `phrasing.pattern_signal` as the live third signal
+    instead. This function is not called anywhere in the running service.
+
+    What it measured: how *consistent* the text's per-sentence
+    predictability is, not how predictable it is on average.
+
+    `model_signal` scores the level — is this text predictable overall.
+    This scores the variance — does the predictability swing sentence to
+    sentence, or stay flat. Human writing tends to alternate between easy,
+    throwaway sentences and harder, denser ones; generated text tends to
+    hold a locally uniform difficulty even as topic shifts. That's a
+    genuinely different property from the level `model_signal` already
+    measures, which is why it's a third signal rather than a restatement of
+    the first: a plain-spoken, low-average-perplexity human paragraph can
+    still have high burstiness, and this signal is the only one of the
+    three that would catch that.
+
+    Reuses the same model as `model_signal` — no new dependency, but one
+    forward pass per scorable sentence instead of one pass total, so this is
+    the slowest of the three signals on a long submission.
+
+    Returns:
+        A float from 0.0 (bursty, human-ish) to 1.0 (uniform, AI-ish).
+
+    ⚠️ The blind spot: a short submission doesn't have enough sentences to
+    have a meaningful variance at all. Fewer than two scorable sentences
+    returns a neutral 0.5 — same reasoning as `stylometry.punctuation_density`'s
+    fix: absence of measurable spread isn't evidence of anything, and scoring
+    it as maximally AI-ish or maximally human-ish would make one of the three
+    labels unreachable on short, ordinary submissions. A submission written
+    entirely in one register on purpose (a single long uniform paragraph, or
+    a list of short similar sentences) will also read as low-burstiness
+    here even from a real person — consistency of *tone* isn't the same
+    thing as being AI-written, and this signal can't tell those apart.
+    """
+    import statistics
+
+    from stylometry import sentences as split_sentences
+
+    parts = split_sentences(text)
+    per_sentence = []
+    for s in parts:
+        try:
+            per_sentence.append(perplexity(s))
+        except ValueError:
+            continue  # too short to score on its own — skip, don't crash
+
+    if len(per_sentence) < 2:
+        return 0.5
+
+    mean = statistics.mean(per_sentence)
+    if mean == 0:
+        return 0.5
+
+    coefficient_of_variation = statistics.stdev(per_sentence) / mean
+
+    # Coefficient of variation of 1.2 or higher is a lot of swing between
+    # sentences — comparable magnitude to sentence_length_spread's cap in
+    # stylometry.py, picked the same way: run real text through it and see
+    # where human and AI samples actually separate.
+    spread = min(coefficient_of_variation, 1.2) / 1.2
+
+    # Higher spread means more human, so flip to match the other two
+    # signals' "higher = more likely AI" direction.
+    score = 1.0 - spread
     return round(min(max(score, 0.0), 1.0), 4)
 
 

@@ -48,6 +48,8 @@ The full trace path a submission takes, step by step, is in [notes/trace.md](not
 
 **The numbers:** `WEIGHT_MODEL_SIGNAL = 0.35`, `WEIGHT_STYLE_SIGNAL = 0.65` (config.py). Style counts nearly twice as much as the model signal, because the model signal was the less stable, more false-positive-prone of the two on my calibration set.
 
+> **Updated in Stretch Features:** a third signal (`phrasing.py::pattern_signal`) was added later, and the weights above were rebalanced to `WEIGHT_MODEL_SIGNAL = 0.30`, `WEIGHT_STYLE_SIGNAL = 0.55`, `WEIGHT_PATTERN_SIGNAL = 0.15` to make room for it — style still counts for the most, for the same reason described above. `combine_signals` is now a three-term weighted average; see the Stretch Features section for the third signal's own writeup and why it's weighted lowest. This paragraph is left as originally written because it's the record of the actual two-signal Milestone 4 decision, not because the numbers are current.
+
 **Where it lives:** `scoring.py::combine_signals`
 
 <!-- ⚠️ The grader checks your code against that line. If your rule lives
@@ -106,6 +108,11 @@ $ curl -X POST http://127.0.0.1:5000/submit \
   "style_score": 0.4716
 }
 ```
+
+> **Note:** this is the actual unit 7 response, pasted as it was returned before
+> the Stretch Features were built. A current `/submit` response also includes
+> `pattern_score` (the third signal) and `creator_note` (per-creator
+> reputation) — see the Stretch Features section for a current, full example.
 
 **An appeal**
 
@@ -330,3 +337,311 @@ that produced it:
      Do not delete and recreate this repository.
      
 ══════════════════════════════════════════════════════════════════════ -->
+
+## Stretch Features
+
+Six additions beyond the required build, in the order they were built.
+
+### `GET /content/<content_id>`
+
+Returns the most recent audit log entry for one content_id — a writer's or a
+site's way of asking "where does this stand right now" without pulling the
+whole log. "Current" means the *last* entry, not the first: an item that was
+appealed shows `status: "under_review"`, even though the original `decided`
+entry (with the original score and label) is still sitting in `/log`,
+untouched. That's the same append-only design the appeal path already relies
+on — this endpoint just reads the tail of one item's history instead of all
+of it.
+
+```bash
+$ curl http://127.0.0.1:5000/content/cc96cc83-10c3-467e-b6ad-5669da740cac
+```
+```json
+{
+  "combined_score": 0.7026,
+  "content_id": "cc96cc83-10c3-467e-b6ad-5669da740cac",
+  "creator_id": "testphrase",
+  "guess": "ai",
+  "label": "We think this was probably written by AI.",
+  "model_score": 0.8818,
+  "pattern_score": 1.0,
+  "status": "decided",
+  "style_score": 0.5238,
+  "timestamp": "2026-08-31T04:34:01+00:00"
+}
+```
+
+Unknown id returns `404 {"error": "not_found", ...}` rather than an empty
+200 — a typo in the id should look like "nothing here," not "here's nothing."
+
+### `GET /creator/<creator_id>`
+
+A writer's full history: every content_id they've ever submitted, each with
+its own timeline of entries and its current status, grouped rather than left
+as one flat list a caller would have to reassemble by hand.
+
+```bash
+$ curl http://127.0.0.1:5000/creator/testphrase
+```
+```json
+{
+  "creator_id": "testphrase",
+  "submission_count": 1,
+  "items": [
+    {"content_id": "cc96cc83-...", "current_status": "decided", "history": [ ... ]}
+  ]
+}
+```
+
+### `GET /stats`
+
+Aggregate numbers over the whole audit log: label distribution, appeal rate,
+and average score per signal. Nothing here is a new source of truth — it's a
+read of what `/log` already recorded, computed on request rather than stored
+separately, so it can never drift from the log itself.
+
+```bash
+$ curl http://127.0.0.1:5000/stats
+```
+```json
+{
+  "total_entries": 20,
+  "decisions": 11,
+  "appeals": 2,
+  "rejections": 3,
+  "appeal_rate": 0.1818,
+  "guess_distribution": {"ai": 6, "human": 2, "unsure": 3},
+  "average_scores": {
+    "model_score": 0.6429, "style_score": 0.4412,
+    "pattern_score": 1.0, "combined_score": 0.5167
+  }
+}
+```
+
+**A real limitation worth naming:** the audit log is append-only with no
+per-content-id index, so `/stats` and `/creator/<id>` both do a full scan of
+`read_entries()` and group in memory. Fine at this project's scale (hundreds
+to low thousands of entries); the wrong design for a log with millions of
+lines, where this would need a real index or a database instead of a flat
+JSONL file.
+
+### Signal three — the pattern signal, and two rejected attempts before it
+
+This section documents a real investigation, not just the final answer:
+two approaches were built and tested against real data before landing on the
+one that shipped. The negative results are included because they're honest
+evidence about where these signals do and don't work, not padding.
+
+**Attempt 1 — a stock-phrase keyword list.** First version of
+`phrasing.py` matched a short, high-precision list of ~20 phrases ("delve
+into", "navigate the complexities", "tapestry of", "it's important to note
+that", "as an AI language model," …), counted per 100 words. Tested against
+two hand-written calibration sets (16 samples, mixed AI-style and
+human-style writing across topics) and four real chatbot completions
+(informational answers about Earth, pregnancy care, ocean fish populations,
+and UFC controversies) — **it scored zero hits on every single sample**,
+AI and human alike, across five separate test passes, including a second,
+much larger pass using an external ~130-entry list of documented AI
+overused words, phrases, and corporate buzzwords. It only ever fired on
+text written specifically to contain its own keywords (a demo sentence, or
+AI content-marketing copy) — never on ordinary informational chatbot output,
+which is what this service is actually likely to receive. A keyword list
+that only detects the examples built to trigger it isn't a signal, it's a
+mirror. Dropped entirely, not shrunk in weight.
+
+**Attempt 2 — burstiness (perplexity variance across sentences).** Reusing
+`detector.py`'s model, this scored the coefficient of variation of
+per-sentence perplexity instead of the average level `model_signal` already
+measures — the idea being that human writing alternates between easy and
+hard-to-predict sentences while generated text holds a more uniform
+difficulty. Real signal existed (AI-sample mean CV ≈0.55, human-sample mean
+CV ≈0.84, correct direction), but the overlap was too large to trust: one
+real human sample (formal academic writing) scored *lower* — more
+"AI-uniform" — than every single AI sample tested, which is exactly the
+false-positive failure mode this whole project exists to avoid: penalizing
+a real writer specifically because they write in a consistent, formal
+register. Dropped for the same reason signal one's blind spot matters —
+a signal that fails hardest on formal writers isn't safe to ship at any
+weight. (`detector.py::burstiness_signal` is left in the codebase,
+explicitly marked as unused, as the record of this attempt.)
+
+**What shipped — `phrasing.py::pattern_signal`.** Rather than matching
+vocabulary, this matches *rhetorical sentence structure*: a contrastive pair
+("It's not about X, it's about Y"), and runs of three or more short (1–3
+word) declarative fragments in a row ("Focused. Aligned. Measurable."). Both
+patterns are documented AI writing tics, specifically in B2B, marketing, and
+opinion-style content. Regexes over open slots, not fixed strings, so it
+catches the *shape* of the device regardless of the words filling it in.
+
+**Why that might differ between human and AI writing:** these are
+persuasive rhetorical devices a language model reaches for often when
+writing punchy, confident-sounding copy, because the pattern itself reads as
+authoritative regardless of what fills the slots. A person writing plainly
+about something they know rarely constructs a formal contrastive pair or
+stacks three one-word sentences in a row — those are stylistic choices a
+copywriter (human or AI) makes on purpose, not something that happens by
+accident in ordinary writing.
+
+**What it can't see, and the actual numbers:** tested against the same real
+chatbot completions and calibration text that broke the phrase list — this
+signal also scores 0.0 on all of them, correctly, because none of that text
+is in the register these patterns target. Given B2B/marketing-style text
+instead, it separates cleanly: a constructed AI-style marketing paragraph
+("It's not about working harder. It's about working smarter. Not because
+it's easy. But because it works. Clear priorities. Aligned incentives.
+Measurable goals. The result? Teams that actually ship.") scores 1.0
+(3 contrastive pairs, 1 fragment run); ordinary human product writing about
+the same topic, in plain sentences, scores 0.0; a human deliberately writing
+in a punchy, fragment-heavy style ("Short. Clear. Honest.") scored 0.33 —
+real but partial false-positive risk from the fragment-run half of the
+signal specifically, not the contrastive-pair half, which stayed at 0.0 on
+every human sample tested including that one. So the blind spot is
+concrete: this signal is **register-specific** (silent outside B2B/opinion
+content, which is most of what a general writing site would see) and its
+weaker half (fragment runs) can fire on a real writer's deliberate style
+choice. It is also, like the rejected phrase list, cheap to defeat on
+purpose — writing in longer, non-parallel sentences removes every trigger
+with no loss of meaning.
+
+**Why it's weighted lowest:** `WEIGHT_MODEL_SIGNAL = 0.30`,
+`WEIGHT_STYLE_SIGNAL = 0.55`, `WEIGHT_PATTERN_SIGNAL = 0.15` (down from
+0.35/0.65 with only two signals). Given it reads 0.0 on most submissions
+(anything outside its target register) and has a known partial
+false-positive path even within that register, it's built to nudge the
+combined score on the specific text it's built for, not drive it.
+`combine_signals` still takes `pattern_score` as an optional third argument
+defaulting to 0.0, so nothing upstream that only knows about two signals
+breaks.
+
+### `POST /submit/batch`
+
+Scores a list of `{text, creator_id}` items in one request instead of one
+call per item — the shape a real writing platform would actually want when
+importing or re-scanning a backlog. Each item runs through the same
+validation and scoring path as `/submit` (`_score_and_log`, shared by both
+routes so they can't silently diverge), independently: one bad item in a
+batch gets its own rejection and doesn't stop the rest of the batch.
+
+Capped at `config.BATCH_MAX_ITEMS = 20`, and it carries the same
+`@limiter.limit(...)` line as `/submit` (commented out until unit 8 turns
+rate limiting on, exactly like `/submit`'s). Both protections matter for
+different reasons: the item cap bounds how much scoring work one request can
+demand; the rate limit bounds how many requests a caller gets per minute.
+Without its own limiter line, `/submit/batch` would have let one request do
+20x the scoring work of a normal submission while counting as a single call
+against `/submit`'s limit — a free way around the cap that "cap the batch
+size" alone doesn't close.
+
+```bash
+$ curl -X POST http://127.0.0.1:5000/submit/batch \
+  -H "Content-Type: application/json" \
+  -d '{"items": [
+    {"text": "The cat sat quietly on the warm windowsill all afternoon.", "creator_id": "batch1"},
+    {"text": "", "creator_id": "batch2"},
+    {"text": "It'\''s not about working harder. It'\''s about working smarter. Not because it'\''s easy. But because it works. The result? Teams that ship.", "creator_id": "batch3"}
+  ]}'
+```
+```json
+{
+  "count": 3,
+  "results": [
+    {"content_id": "7297d9a3-...", "guess": "unsure", "model_score": 0.2064, "pattern_score": 0.0, "style_score": 0.5333, ...},
+    {"error": "invalid_input", "message": "text is required and must be at least a few words long."},
+    {"content_id": "76545fb6-...", "guess": "ai", "model_score": 0.5809, "pattern_score": 1.0, "style_score": 0.4136, ...}
+  ]
+}
+```
+
+### Per-creator reputation (`creators.py`) — the informational answer to "verified human"
+
+A real verified-human credential (an identity check, an extra step a writer
+takes to earn a badge) was scoped out earlier — see the deferred section
+below for why. What shipped instead is smaller and more honest about what
+this service can actually claim: a running tally, per `creator_id`, of what
+this service's *own* three signals have said about that writer's past
+submissions, surfaced back to the reader instead of decided for them.
+
+**What it is not:** an identity check. Nobody proves anything to earn
+"verified" here. It's a majority vote of this detector's own past guesses
+about one creator_id — `human_count > ai_count`, recomputed fresh on every
+read, not stored as an independent flag that could drift out of sync with
+the counts. A brand-new creator with zero history is unverified (`0 > 0` is
+false), same starting point as everyone else.
+
+**Storage:** `creators.py`, backed by `logs/creators.json` — a plain dict
+keyed by `creator_id`, not the audit log. The audit log's append-only shape
+is right for "what happened, in order" but wrong for "what's true about
+this creator right now": answering that from the log would mean scanning
+every entry on every request. This is current-state, so a small
+read-modify-write file fits better, guarded by the same `threading.Lock`
+pattern `audit.py` already uses for its own writes — a real concurrency
+concern here too, since two submissions from the same creator arriving
+close together both read-modify-write the same record.
+
+**What updates it:** every `/submit` and `/submit/batch` decision calls
+`creators.record_guess(creator_id, guess)` right after logging, bumping
+exactly one of `ai_count` / `human_count` / `unsure_count`. A submission
+with no `creator_id` updates nothing — there's no one to attribute it to.
+Rejected submissions (bad input) never reach this — only a completed
+decision counts.
+
+**A current, full `/submit` response** — the same request that opened the
+Sample Run section above, re-sent after every Stretch Feature landed:
+
+```bash
+$ curl -X POST http://127.0.0.1:5000/submit \
+  -H "Content-Type: application/json" \
+  -d '{"text": "MerchantE is a financial technology company that provides payment-processing and payment-infrastructure services to businesses. Founded in 1999, it began as an e-commerce payment provider and has grown into a full-service payments platform.", "creator_id": "asrar"}'
+```
+```json
+{
+  "confidence": 0.0111,
+  "content_id": "01b15855-7c84-45e2-83b5-ee12c2de6578",
+  "creator_note": "This writer is unverified human. Deemed AI 0 times, deemed human 0 times, and unsure 1 time.",
+  "guess": "unsure",
+  "label": "We can't tell whether this was written by a person or by AI. This isn't an accusation — it just means our checks didn't turn up a clear answer either way.",
+  "model_score": 0.8206,
+  "pattern_score": 0.0,
+  "style_score": 0.4716
+}
+```
+
+Note this lands on "unsure" rather than the original "ai" — `model_score`
+and `style_score` are close to their original unit 7 values (perplexity
+scoring has real run-to-run noise, documented in `detector.py`), but the
+rebalanced weights (0.30/0.55/0.15 instead of 0.35/0.65) combined with an
+`unsure`-counted `creator_note` for a brand-new creator are enough to move
+this specific text across the threshold. That's a real, visible consequence
+of the reweighting, not a cherry-picked example.
+
+**What it changes, and what it deliberately doesn't:** nothing about
+`combine_signals` or the thresholds. Reputation never touches the score or
+the label — it rides alongside them as a `creator_note` string on `/submit`,
+`/submit/batch`, `/content/<id>`, and `/creator/<id>`, e.g.:
+
+```
+"This writer is verified human. Deemed AI 1 time, deemed human 2 times, and unsure 0 times."
+"This writer is unverified human. Deemed AI 11 times, deemed human 2 times, and unsure 3 times."
+```
+
+That was a deliberate scope cut: letting a creator's history soften or
+sharpen their *current* score is a real design decision (does one appeal
+years ago excuse today's text? does a first-time writer with no history get
+penalized by default?) big enough to deserve its own investigation, the
+same way the third signal did. Reporting the numbers and letting a human
+reader weigh them avoids answering that question by accident.
+
+---
+
+**Not built (yet), and deliberately deferred** — not one of the six
+additions above, listed here because it was actively considered and cut,
+not overlooked: review queue, moderator decisions, real identity
+verification. A `GET /review-queue` +
+`POST /decide` pair would round the appeal path into a full moderation loop,
+but `POST /decide` needs an actual concept of "who is allowed to decide" —
+without that it's just a second way to overwrite a status, which is worse
+than the appeal path that exists now. A real verified-human credential (an
+identity check, an "extra step" a writer completes once to earn a badge, as
+opposed to the reputation tally above) needs its own design decision about
+whether and how that credential should interact with scoring — worth doing
+right, not worth rushing in alongside everything else here.

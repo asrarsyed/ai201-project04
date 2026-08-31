@@ -82,14 +82,16 @@ def log_appeal(content_id: str, creator_id: str, reasoning: str) -> dict:
     the whole point of an audit log. Someone reading it later can see what was
     decided, that it was challenged, and in what order.
     """
-    return _append({
-        "timestamp": _now(),
-        "content_id": content_id,
-        "creator_id": creator_id,
-        "event": "appeal",
-        "status": "under_review",
-        "reasoning": reasoning,
-    })
+    return _append(
+        {
+            "timestamp": _now(),
+            "content_id": content_id,
+            "creator_id": creator_id,
+            "event": "appeal",
+            "status": "under_review",
+            "reasoning": reasoning,
+        }
+    )
 
 
 def log_rejection(creator_id: str, reason: str, **extra) -> dict:
@@ -102,22 +104,23 @@ def log_rejection(creator_id: str, reason: str, **extra) -> dict:
     thousand requests that got a 429 and left no trace look exactly like a
     quiet afternoon.
     """
-    return _append({
-        "timestamp": _now(),
-        "creator_id": creator_id,
-        "event": "rejected",
-        "status": "rejected",
-        "reason": reason,
-        **extra,
-    })
+    return _append(
+        {
+            "timestamp": _now(),
+            "creator_id": creator_id,
+            "event": "rejected",
+            "status": "rejected",
+            "reason": reason,
+            **extra,
+        }
+    )
 
 
 def _append(entry: dict) -> dict:
     config.LOG_DIR.mkdir(parents=True, exist_ok=True)
     line = json.dumps(entry, ensure_ascii=False)
-    with _lock:
-        with config.AUDIT_LOG.open("a", encoding="utf-8") as f:
-            f.write(line + "\n")
+    with _lock, config.AUDIT_LOG.open("a", encoding="utf-8") as f:
+        f.write(line + "\n")
     return entry
 
 

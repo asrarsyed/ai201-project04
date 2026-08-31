@@ -54,8 +54,9 @@ DETECTOR_MAX_TOKENS = 400
 # down BEFORE you code it, and to put the numbers in your README. Whatever you
 # decide, it goes here.
 
-WEIGHT_MODEL_SIGNAL = 0.35
-WEIGHT_STYLE_SIGNAL = 0.65
+WEIGHT_MODEL_SIGNAL = 0.30
+WEIGHT_STYLE_SIGNAL = 0.55
+WEIGHT_PATTERN_SIGNAL = 0.15
 
 
 # ─── Thresholds (Milestone 5) ────────────────────────────────────────────────
@@ -102,9 +103,21 @@ RATE_LIMIT_PER_DAY = 200
 # of the service wouldn't share limits.
 RATE_LIMIT_STORAGE = "memory://"
 
+# ─── Batch submission (Stretch feature) ──────────────────────────────────────
+# /submit/batch scores several texts in one call. Each item still costs one
+# model + style + phrase pass, so an unbounded batch is just the rate limit
+# with extra steps — capped independently of RATE_LIMIT_PER_MINUTE.
+
+BATCH_MAX_ITEMS = 20
+
 
 # ─── Paths ───────────────────────────────────────────────────────────────────
 
 LOG_DIR = ROOT / "logs"
 AUDIT_LOG = LOG_DIR / "audit.jsonl"
 RESULTS_DIR = ROOT / "results"
+
+# Per-creator reputation counts (Stretch feature) — current-state, not an
+# append-only log, so it lives in its own small file rather than in
+# audit.jsonl. See creators.py.
+CREATORS_STORE = LOG_DIR / "creators.json"
