@@ -25,35 +25,35 @@ The full trace path a submission takes, step by step, is in [notes/trace.md](not
 
 ### Signal one — the model signal
 
-**What it measures:**
+**What it measures:** How predictable the text is to a local language model (perplexity), turned into a 0–1 score where higher means more likely AI.
 
-**Why that might differ between human and AI writing:**
+**Why that might differ between human and AI writing:** A language model writes by repeatedly picking a likely next word, so its own output tends to be easy for a model to predict. Human writing wanders more.
 
-**What it can't see:**
+**What it can't see:** It can't tell predictable from AI-written. Plain, ordinary writing (short sentences, common words) scores machine-like even from a real person, and dense, rare-word prose scores human-like even when AI wrote it. It rewards the writers with the least room to argue back.
 
 ### Signal two — the style signal
 
-**What it measures:**
+**What it measures:** The shape of the text, not its meaning — sentence length spread, vocabulary repetition (type-token ratio), and density of semicolons/dashes/ellipses. Combined into a 0–1 score, higher means more likely AI.
 
-**Why that might differ between human and AI writing:**
+**Why that might differ between human and AI writing:** Generated prose tends toward even, mid-length sentences and a narrower vocabulary. Human writing is lumpier.
 
-**What it can't see:**
+**What it can't see:** It cannot read. It has no idea what the text says, so anything that changes shape without changing substance (typos, breaking up sentences, pasting a quotation) moves the score. It also has the same blind spot as signal one in reverse: testing it on my own calibration text, plain AI writing scored *more* AI-ish than ornate AI writing with rare words and an em dash — rare/varied words read as more human to this signal, same trap signal one falls into.
 
 ### The combining rule
 
 <!-- Write the rule in words, then give the numbers. What happens when the two
      signals disagree? -->
 
-**The rule:**
+**The rule:** A weighted average of the two 0–1 signal scores, `config.WEIGHT_MODEL_SIGNAL * model_score + config.WEIGHT_STYLE_SIGNAL * style_score`. I ran both signals over 7 calibration texts (clearly AI, informal real human, plain AI, formal AI, a real human blog post, formal human writing, and a lightly-edited AI paragraph) before picking the weights. Contrary to what I expected, the two signals never actually disagreed in direction on this set — they consistently moved *together*, both leaning AI-ish on the same texts, including two human-written ones. So "what happens when they disagree" turned out to be the wrong question for my data; the real finding was that model_score swung harder and less reliably (0.47–0.93 across the set) than style_score (0.46–0.70), and the model signal was the one most responsible for pushing formal/literate human writing toward "AI". I weighted style_score higher specifically to blunt that.
 
-**The numbers:**
+**The numbers:** `WEIGHT_MODEL_SIGNAL = 0.35`, `WEIGHT_STYLE_SIGNAL = 0.65` (config.py). Style counts nearly twice as much as the model signal, because the model signal was the less stable, more false-positive-prone of the two on my calibration set.
 
 **Where it lives:** `scoring.py::combine_signals`
 
 <!-- ⚠️ The grader checks your code against that line. If your rule lives
      somewhere else, say where. -->
 
-**A case where my two signals split, and what my rule does with it:**
+**A case where my two signals split, and what my rule does with it:** They didn't split in direction, but they split in *magnitude* on two texts with almost identical texture. "Informal real human" writing (a founder's blog post) scored model=0.467, style=0.463 — both correctly near the human end. "Clearly human (blog)" — another real, informal, first-person post, just as casual, with a typo left in — scored model=0.624, style=0.578: both signals leaning AI, and the model signal driving most of that lean. Combined, that second text lands at 0.594, in the "unsure" band rather than "human" under my current thresholds. That's the case the combining rule has to live with: reweighting toward style softened it (0.594 vs. an unweighted average of 0.601) but didn't fix it. A real, ordinary person writing casually about their own life can still land in "unsure," not "human" — the reweight reduces how often that happens, it doesn't eliminate it. Threshold tuning in Milestone 5 is the next lever, not the combining rule alone.
 
 
 ## Label Variants
