@@ -1,0 +1,38 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      # The unit suite stubs the local language model, so torch and
+      # transformers are never imported and the ~550 MB download never
+      # happens. Installing only what the tests actually touch keeps CI to
+      # well under a minute; the full dependency set is exercised by
+      # scripts/run_eval.py against a running service, which needs a real
+      # model and isn't a CI job.
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flask flask-limiter pytest
+
+      - name: Run tests
+        run: pytest -q
+        env:
+          PYTHONPATH: src

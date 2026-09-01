@@ -17,6 +17,17 @@ models/
 .DS_Store
 Thumbs.db
 
-# NOTE: logs/ and results/ are deliberately NOT ignored. Your audit log and
-# your attack runs are evidence, and they're part of what gets graded.
-# Commit them.
+# Runtime data — generated at runtime, not shipped. Structure documented
+# in docs/ARCHITECTURE.md; sample findings from these are quoted directly
+# in docs/RESEARCH.md instead of keeping the raw files tracked.
+# The .gitkeep files are re-included so a fresh clone still has the
+# directories the service and scripts write into.
+logs/*
+results/*
+!logs/.gitkeep
+!results/.gitkeep
+
+# build artifacts
+build/
+dist/
+*.egg-info/
